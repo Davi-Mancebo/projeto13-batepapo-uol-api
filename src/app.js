@@ -2,7 +2,7 @@ import express from "express";
 import cors from "cors";
 import { MongoClient } from "mongodb";
 import dotenv from "dotenv";
-import Joi, { date } from "joi";
+import Joi from "joi";
 import dayjs from "dayjs";
 
 const app = express();
@@ -17,6 +17,33 @@ mongoClient.connect().then(() => {
   db = mongoClient.db();
   console.log("conectado");
 });
+
+async function afkUser() {
+  const afkUser = await db
+    .collection("participants")
+    .find({lastStatus: {$lt: Date.now()-10000}})
+    .toArray();
+
+  console.log(afkUser)
+
+  afkUser.map(async (user) => {
+    await db
+      .collection("messages")
+      .insertOne({
+        from: user.name,
+        to: "Todos",
+        text: "sai da sala...",
+        type: "status",
+        time: dayjs().format("HH:mm:ss"),
+      });
+
+    await db.collection("participants").deleteOne({ id: user.id });
+  });
+
+  console.log(afkUser);
+}
+
+setInterval(afkUser, 15000);
 
 app.post("/participants", async (req, res) => {
   const participant = req.body;
@@ -71,7 +98,7 @@ app.post("/messages", async (req, res) => {
     .findOne({ name: req.body?.to });
 
   if (validation.error || !usuarioExiste) {
-    console.log()
+    console.log();
     console.log(req.headers);
     return res.sendStatus(422);
   }
@@ -87,11 +114,21 @@ app.post("/messages", async (req, res) => {
   return res.sendStatus(201);
 });
 app.post("/status", async (req, res) => {
-  const userExist = await db.collection("participants").findOne({name: req.headers?.user})
-  if(userExist){
-    await db.collection("participants").updateOne({name: req.headers?.user}, {$set: {lastStatus: Date.now()}})
+  const userExist = await db
+    .collection("participants")
+    .findOne({ name: req.headers?.user });
+  console.log(userExist);
+  if (userExist) {
+    await db
+      .collection("participants")
+      .updateOne(
+        { name: req.headers?.user },
+        { $set: { lastStatus: Date.now() } }
+      );
+
+    return res.sendStatus(200);
   }
-  res.sendStatus(404)
+  res.sendStatus(404);
 });
 
 app.get("/participants", (req, res) => {
