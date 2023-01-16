@@ -52,25 +52,33 @@ app.post("/participants", async (req, res) => {
   return res.sendStatus(201);
 });
 app.post("/messages", async (req, res) => {
-  const message = req.body
+  const message = req.body;
 
   const messageJoi = Joi.object({
     to: Joi.string().min(1).required(),
     text: Joi.string().min(1).required(),
-    type: Joi.string().allow("message", "private_message").required,
+    type: Joi.string().valid("message", "private_message").required(),
   });
 
-  const validation = messageJoi.validate(message)
+  const validation = messageJoi.validate(message);
 
   const usuarioExiste = await db
-  .collection("participants")
-  .findOne({ name: req.headers?.from });
+    .collection("participants")
+    .findOne({ name: req.headers?.from });
 
-  if(validation.error || !usuarioExiste ){
-    console.log(validation)
-    console.log(usuarioExiste)
-    return res.sendStatus(422)
+  const toExiste = await db.collection("participants").findOne({name: req.body?.to})
+
+  if (validation.error || !usuarioExiste || !toExiste) {
+    return res.sendStatus(422);
   }
+
+  await db.collection("messages").insertOne({
+    from: req.headers?.from,
+    to: req.body?.to,
+    text: req.body?.text,
+    type: req.body?.type,
+    time: dayjs().format("HH:mm:ss"),
+  })
 
   return res.sendStatus(201);
 });
@@ -86,17 +94,24 @@ app.get("/participants", (req, res) => {
 });
 app.get("/messages", async (req, res) => {
   const message = await db.collection("messages").find().toArray();
-
+  const userMessage = await message.filter(
+    (itens) =>
+      itens.from === req.headers?.user ||
+      itens.to === req.headers?.user ||
+      itens.type === "status" ||
+      itens.type === "message"
+  );
+  console.log(userMessage);
   if (req.query?.limit) {
     const limit = parseInt(req.query?.limit);
     console.log(limit);
-
     if (typeof limit !== "number" || isNaN(limit)) {
       res.status(400).send("limit error");
     }
-    return res.send(message.slice(-limit).reverse());
+    return res.send(userMessage.slice(-limit).reverse());
   }
-  return res.send(message.reverse());
+
+  return res.send(userMessage.reverse());
 });
 
 app.listen(5000, () => {
