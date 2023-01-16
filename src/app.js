@@ -2,7 +2,7 @@ import express from "express";
 import cors from "cors";
 import { MongoClient } from "mongodb";
 import dotenv from "dotenv";
-import Joi from "joi";
+import Joi, { date } from "joi";
 import dayjs from "dayjs";
 
 const app = express();
@@ -64,25 +64,35 @@ app.post("/messages", async (req, res) => {
 
   const usuarioExiste = await db
     .collection("participants")
-    .findOne({ name: req.headers?.from });
+    .findOne({ name: req.headers?.user });
 
-  const toExiste = await db.collection("participants").findOne({name: req.body?.to})
+  const toExiste = await db
+    .collection("participants")
+    .findOne({ name: req.body?.to });
 
-  if (validation.error || !usuarioExiste || !toExiste) {
+  if (validation.error || !usuarioExiste) {
+    console.log()
+    console.log(req.headers);
     return res.sendStatus(422);
   }
 
   await db.collection("messages").insertOne({
-    from: req.headers?.from,
+    from: req.headers?.user,
     to: req.body?.to,
     text: req.body?.text,
     type: req.body?.type,
     time: dayjs().format("HH:mm:ss"),
-  })
+  });
 
   return res.sendStatus(201);
 });
-app.post("/status", (req, res) => {});
+app.post("/status", async (req, res) => {
+  const userExist = await db.collection("participants").findOne({name: req.headers?.user})
+  if(userExist){
+    await db.collection("participants").updateOne({name: req.headers?.user}, {$set: {lastStatus: Date.now()}})
+  }
+  res.sendStatus(404)
+});
 
 app.get("/participants", (req, res) => {
   db.collection("participants")
@@ -105,8 +115,8 @@ app.get("/messages", async (req, res) => {
   if (req.query?.limit) {
     const limit = parseInt(req.query?.limit);
     console.log(limit);
-    if (typeof limit !== "number" || isNaN(limit)) {
-      res.status(400).send("limit error");
+    if (limit === 0 || limit < 0 || isNaN(limit)) {
+      res.status(422).send("limit error");
     }
     return res.send(userMessage.slice(-limit).reverse());
   }
